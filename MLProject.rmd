@@ -1,0 +1,153 @@
+---
+title: "ML Course - project"
+author: "Narayan Menon"
+date: "April 27, 2019"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+BACKGROUND
+With the advent of many devices like FitBit, a lot of people are now into measuring how much activity
+they get in a day. The implication being that the more active one is - the better their health. While
+this is generally true, it is also important that the said activity is performed well. Professionals 
+will tell you the importance of form in doing the activity. The dataset we are going to examine here
+was collected from 6 males who were asked to lift weights in 5 different forms - only one of them being
+the prescribed form.
+
+OBJECTIVE
+To use data collected on 6 males via sensors on their arm, forearm, belt and the dumb bells they used 
+and build a predictive model to determine if the weights are being lifted with good form or not.
+
+ACQUIRE DATA
+The training data is available at: https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv.
+Download the file and save it in the working dir.
+
+```{r}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv","HAR-training.csv")
+```
+
+Likewise the testing data:
+```{r}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv","HAR-testing.csv")
+```
+
+Read the Training & Testing file s
+```{r}
+training <- read.csv("HAR-training.csv",,na.strings=c("NA","#DIV/0!",""))
+testing <- read.csv("HAR-testing.csv",,na.strings=c("NA","#DIV/0!",""))
+```
+
+EXPLORATORY DATA ANALYSIS
+
+```{r}
+dim(training)
+str(training)
+summary(training)
+```
+
+CHECK FOR NA
+
+There are 160 features in the dataset. There are 38 each of arm, forearm, belt and dumbbell features.
+Since NAs will present a problem for many models, we are going to remove them from the dataset.
+
+```{r}
+training_nona <- training[sapply(training, function(x) !any(is.na(x)))]
+testing_nona <- testing[sapply(testing, function(x) !any(is.na(x)))]
+```
+
+Doing this removed 100 features from the dataset - as shown by:
+
+```{r}
+dim(training_nona)
+```
+
+There are still 60 features in the dataset. 
+
+Now lets remove the features that are attributes of the subjects rather than measured observations:
+
+```{r}
+trn <- training_nona[ ,!(colnames(training_nona) %in% c("X", "user_name","raw_timestamp_part_1",
+		"raw_timestamp_part_2","cvtd_timestamp","new_window","num_window"))]
+dim(trn)
+tst <- testing_nona[ ,!(colnames(testing_nona) %in% c("X", "user_name","raw_timestamp_part_1",
+		"raw_timestamp_part_2","cvtd_timestamp","new_window","num_window"))]
+```
+
+
+
+MODEL BUILDING
+
+```{r}
+set.seed(1234)
+library(caret)
+inTrain <- createDataPartition(y=trn$classe, p=0.7, list=F)
+subTrn <- trn[inTrain,]
+subTst <- trn[-inTrain,]
+```
+
+Model 1 - Decision Tree
+
+```{r}
+ctrl <- trainControl("cv",10)
+m1 <- train(classe ~ .,data=subTrn, method="rpart",tuneLength = 15,trControl = ctrl)
+confusionMatrix(predict(m1,newdata = subTst),subTst$classe)
+```
+
+The accuracy of the model is only around 75%.
+
+Bumping up the tuneLength to 20
+
+```{r}
+m2 <- train(classe ~ .,data=subTrn, method="rpart",tuneLength = 20,trControl = ctrl)
+confusionMatrix(predict(m2,newdata = subTst),subTst$classe)
+```
+
+The accuracy of the model is now 79%
+
+Model 2 - Random Forest
+
+```{r}
+m3 <- train(classe ~ .,data=subTrn, method="rf",ntree = 10)
+confusionMatrix(predict(m3,newdata = subTst),subTst$classe)
+```
+
+The accuracy of the model is 99%
+
+While we are happy with the accuracy of the random forest model, We will now see if the training can 
+be made faster by dropping any features that are not needed.
+For this we will run PCA.
+
+```{r}
+trn1 <- subset( trn, select = -classe )
+prc <- prcomp(trn1)
+trn2 <- predict(prc,subTrn)
+trn2 <- trn2[,c(1:10)]
+
+trn2 <- data.frame(trn2,subTrn$classe)
+m4 <- train(subTrn.classe ~ .,data=trn2, method="rf",ntree = 10)
+tst2 <- predict(prc,subTst)
+confusionMatrix(predict(m4,newdata = tst2),subTst$classe)
+```
+
+The accuracy of thismodel is around 90%. The advantage of using it is the much lower time in training 
+the model.
+
+MODEL TESTING
+
+Use the model built on random forest to make the prediction on the test data:
+
+```{r}
+predict(m3,tst)
+
+tst3 <- predict(prc,tst)
+predict(m4,tst3)
+```
+
+CONCLUSION
+
+B A B A A E D B A A B C B A E E A B B B - Random Forest
+
+C A C A A E D B A A B C B A E E A B B B - Random Forest after PCA
+
+
